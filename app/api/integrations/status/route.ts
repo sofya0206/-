@@ -1,7 +1,5 @@
-import { env } from "cloudflare:workers";
-
 export async function GET(request: Request) {
-  const bindings = env as unknown as Record<string, unknown>;
+  const bindings = process.env as unknown as Record<string, unknown>;
   const origin = new URL(request.url).origin;
   return Response.json({
     telegram: {

@@ -1,10 +1,9 @@
-import { env } from "cloudflare:workers";
 import { getDb } from "../../../../db";
 import { clients } from "../../../../db/schema";
 
 export async function POST(request: Request) {
   try {
-    const bindings = env as unknown as Record<string, unknown>;
+    const bindings = process.env as unknown as Record<string, unknown>;
     const token = typeof bindings.TELEGRAM_BOT_TOKEN === "string" ? bindings.TELEGRAM_BOT_TOKEN : "";
     const chatId = typeof bindings.TELEGRAM_CHAT_ID === "string" ? bindings.TELEGRAM_CHAT_ID : "";
     if (!token || !chatId) return Response.json({ error: "Telegram не настроен", missing: [!token && "TELEGRAM_BOT_TOKEN", !chatId && "TELEGRAM_CHAT_ID"].filter(Boolean) }, { status: 409 });

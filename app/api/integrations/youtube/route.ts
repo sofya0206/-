@@ -1,4 +1,3 @@
-import { env } from "cloudflare:workers";
 import { getDb } from "../../../../db";
 import { videos } from "../../../../db/schema";
 
@@ -7,7 +6,7 @@ type VideoItem = { id?: string; statistics?: { viewCount?: string } };
 
 export async function POST() {
   try {
-    const bindings = env as unknown as Record<string, unknown>;
+    const bindings = process.env as unknown as Record<string, unknown>;
     const key = typeof bindings.YOUTUBE_API_KEY === "string" ? bindings.YOUTUBE_API_KEY : "";
     const channel = typeof bindings.YOUTUBE_CHANNEL_ID === "string" ? bindings.YOUTUBE_CHANNEL_ID : "";
     if (!key || !channel) return Response.json({ error: "YouTube не настроен", missing: [!key && "YOUTUBE_API_KEY", !channel && "YOUTUBE_CHANNEL_ID"].filter(Boolean) }, { status: 409 });
