@@ -1,6 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { reminders } from "../../../db/schema";
+import { activityEvents, clients, reminders } from "../../../db/schema";
 
 export async function GET() {
   try {
@@ -28,13 +28,17 @@ export async function POST(request: Request) {
     if (!payload.clientId || !payload.manager || !payload.message || !payload.remindAt) {
       return Response.json({ error: "Заполните все поля" }, { status: 400 });
     }
-    const [reminder] = await getDb().insert(reminders).values({
+    const db = getDb();
+    const now = new Date().toISOString();
+    const [reminder] = await db.insert(reminders).values({
       clientId: payload.clientId,
       manager: payload.manager,
       message: payload.message,
       remindAt: payload.remindAt,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
     }).returning();
+    await db.update(clients).set({ nextFollowUp: payload.remindAt, lastActivity: "Только что" }).where(eq(clients.id, payload.clientId));
+    await db.insert(activityEvents).values({ type: "reminder_created", entityId: reminder.id, title: "Создано напоминание", detail: `${payload.manager} · ${payload.message}`, createdAt: now });
     return Response.json({ reminder }, { status: 201 });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Database unavailable" }, { status: 500 });

@@ -14,7 +14,7 @@ const seedClients = [
 export async function GET() {
   try {
     const db = getDb();
-    let rows = await db.select().from(clients).orderBy(asc(clients.id));
+    const rows = await db.select().from(clients).orderBy(asc(clients.id));
     if (rows.length === 0) {
       for (const batch of [seedClients.slice(0, 4), seedClients.slice(4)]) {
         rows.push(...await db.insert(clients).values(batch).returning());
