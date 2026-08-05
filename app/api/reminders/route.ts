@@ -1,4 +1,4 @@
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { reminders } from "../../../db/schema";
 
@@ -6,6 +6,17 @@ export async function GET() {
   try {
     const rows = await getDb().select().from(reminders).orderBy(desc(reminders.id)).limit(50);
     return Response.json({ reminders: rows });
+  } catch (error) {
+    return Response.json({ error: error instanceof Error ? error.message : "Database unavailable" }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const payload = (await request.json()) as { id?: number; status?: string };
+    if (!payload.id || !payload.status) return Response.json({ error: "id and status are required" }, { status: 400 });
+    const [reminder] = await getDb().update(reminders).set({ status: payload.status }).where(eq(reminders.id, payload.id)).returning();
+    return Response.json({ reminder });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Database unavailable" }, { status: 500 });
   }
