@@ -272,7 +272,7 @@ export default function Dashboard() {
       </header>
 
       <div className="content">
-        {activeTab === "overview" && <Overview onOpen={changeTab} exportReport={exportReport} onAddLead={() => setNewLeadOpen(true)} />}
+        {activeTab === "overview" && <Overview onOpen={changeTab} />}
         {activeTab === "youtube" && <Youtube exportReport={exportReport} />}
         {activeTab === "sales" && <Sales managersCount={dbManagers.length} onAddManager={() => setManagerOpen(true)} />}
         {activeTab === "crm" && <CRM clients={filteredClients} search={search} setSearch={setSearch} filter={stageFilter} setFilter={setStageFilter} openClient={setActiveClient} onNewLead={() => setNewLeadOpen(true)} onImport={() => setImportOpen(true)} />}
@@ -294,56 +294,59 @@ export default function Dashboard() {
   </div>;
 }
 
-function Overview({ onOpen, exportReport, onAddLead }: { onOpen: (tab: Tab) => void; exportReport: () => void; onAddLead: () => void }) {
-  const bars = [42, 48, 45, 58, 54, 65, 61, 74, 69, 82, 78, 94, 88, 100, 91, 106, 96, 112, 105, 119, 111, 126, 117, 132, 124, 139, 130, 148, 138, 154, 145];
+type OverviewMetric = {
+  label: string;
+  value: string;
+  change: string;
+  progress: number;
+  progressLabel: string;
+  progressValue: string;
+  detail: string;
+  icon: LucideIcon;
+  tone: string;
+  featured?: boolean;
+};
+
+function OverviewMetricCard({ metric, onClick }: { metric: OverviewMetric; onClick: () => void }) {
+  const Icon = metric.icon;
+  return <button className={`overview-metric-card ${metric.tone}${metric.featured ? " featured" : ""}`} onClick={onClick}>
+    <span className="overview-metric-top">
+      <span className="overview-metric-label">{metric.label}</span>
+      <span className="overview-metric-change"><ArrowUpRight size={14} />{metric.change}</span>
+      <span className="overview-metric-icon"><Icon size={19} /></span>
+    </span>
+    <strong>{metric.value}</strong>
+    <span className="overview-metric-detail">{metric.detail}</span>
+    <span className="overview-progress-copy"><span>{metric.progressLabel}</span><b>{metric.progressValue}</b></span>
+    <span className="overview-progress" aria-hidden="true"><i style={{ width: `${Math.min(metric.progress, 100)}%` }} /></span>
+  </button>;
+}
+
+function Overview({ onOpen }: { onOpen: (tab: Tab) => void }) {
+  const financeMetrics: OverviewMetric[] = [
+    { label: "Выручка", value: "18,42 млн ₽", change: "+18,2%", progress: 100, progressLabel: "Выполнение плана", progressValue: "108%", detail: "Все поступления за июль", icon: CircleDollarSign, tone: "green" },
+    { label: "Чистая прибыль", value: "7,86 млн ₽", change: "+24,7%", progress: 42.7, progressLabel: "Маржинальность", progressValue: "42,7%", detail: "После всех расходов", icon: TrendingUp, tone: "lime", featured: true },
+    { label: "Расходы", value: "6,18 млн ₽", change: "−4,8%", progress: 95.2, progressLabel: "Бюджет использован", progressValue: "95,2%", detail: "Ниже плана на 312 тыс. ₽", icon: Wallet, tone: "coral" },
+  ];
+  const salesMetrics: OverviewMetric[] = [
+    { label: "Заявки", value: "1 836", change: "+11,8%", progress: 59.5, progressLabel: "Дошли до диалога", progressValue: "59,5%", detail: "Из всех источников", icon: FileText, tone: "purple" },
+    { label: "Звонки", value: "486", change: "+13,4%", progress: 44.5, progressLabel: "Диалог → звонок", progressValue: "44,5%", detail: "Проведено отделом продаж", icon: Phone, tone: "blue" },
+    { label: "Продажи", value: "137", change: "+15,1%", progress: 28.2, progressLabel: "Звонок → продажа", progressValue: "28,2%", detail: "Средний чек 134 450 ₽", icon: Target, tone: "yellow" },
+  ];
   return <>
-    <SectionHeading eyebrow="СВОДКА ЗА ИЮЛЬ" title="Бизнес растёт быстрее плана" copy="Все ключевые метрики в одном окне — от просмотра ролика до оплаты." action={<button className="primary-button" onClick={onAddLead}><Plus size={16} /> Добавить заявку</button>} />
-    <section className="metric-grid">
-      <MetricCard label="Выручка" value="18,42 млн ₽" change="18,2%" hint="к июню" icon={CircleDollarSign} />
-      <MetricCard label="Чистая прибыль" value="7,86 млн ₽" change="24,7%" hint="маржа 42,7%" icon={TrendingUp} />
-      <MetricCard label="Расходы" value="6,18 млн ₽" change="4,8%" positive={false} hint="ниже плана" icon={Wallet} />
-      <MetricCard label="Средний чек" value="134 450 ₽" change="9,2%" hint="137 продаж" icon={Target} />
-    </section>
-
-    <section className="overview-grid">
-      <article className="panel revenue-panel">
-        <div className="panel-head"><div><span className="panel-kicker">ДЕНЕЖНЫЙ ПОТОК</span><h3>Выручка и расходы</h3></div><div className="legend"><span><i className="legend-revenue" />Выручка</span><span><i className="legend-cost" />Расходы</span></div></div>
-        <div className="revenue-summary"><div><strong>18,42 млн ₽</strong><Trend value="18,2%" /></div><p>План выполнен на <b>108%</b></p></div>
-        <div className="bar-chart">
-          <div className="y-axis"><span>800к</span><span>600к</span><span>400к</span><span>200к</span><span>0</span></div>
-          <div className="bars-wrap">{bars.map((v, i) => <div className="bar-column" key={i}><i className="bar-revenue" style={{ height: `${Math.min(v / 1.6, 96)}%` }} /><i className="bar-cost" style={{ height: `${Math.min(v / 3.15 + (i % 4) * 3, 52)}%` }} /></div>)}</div>
-          <div className="x-axis"><span>1 июл</span><span>8 июл</span><span>15 июл</span><span>22 июл</span><span>31 июл</span></div>
-        </div>
-      </article>
-
-      <article className="panel funnel-panel">
-        <div className="panel-head"><div><span className="panel-kicker">СКВОЗНАЯ ВОРОНКА</span><h3>От просмотра до продажи</h3></div><button className="ghost-icon" onClick={() => onOpen("sales")}><ExternalLink size={17} /></button></div>
-        <div className="funnel-total"><strong>1 242 860</strong><span>просмотров</span><Trend value="14,6%" /></div>
-        <div className="funnel-flow">
-          {[
-            ["Заявки", "1 836", "1,48%", 100], ["Диалоги", "1 092", "59,5%", 82], ["Звонки", "486", "44,5%", 62], ["Продажи", "137", "28,2%", 43],
-          ].map((row, i) => <div className="funnel-row" key={row[0]}><div><span>{row[0]}</span><strong>{row[1]}</strong><em>{row[2]}</em></div><i><b style={{ width: `${row[3]}%` }} /></i>{i < 3 && <small>↓ {row[2]}</small>}</div>)}
-        </div>
-      </article>
-    </section>
-
-    <section className="lower-grid">
-      <article className="panel video-table-panel">
-        <div className="panel-head"><div><span className="panel-kicker">YOUTUBE</span><h3>Эффективность роликов</h3></div><button className="text-button" onClick={() => onOpen("youtube")}>Все ролики <ChevronRight size={15} /></button></div>
-        <VideoTable compact />
-      </article>
-      <div className="side-stack">
-        <article className="panel product-health">
-          <div className="panel-head"><div><span className="panel-kicker">ПРОДУКТ</span><h3>Здоровье продукта</h3></div><button className="ghost-icon" onClick={() => onOpen("product")}><ChevronRight size={18} /></button></div>
-          <div className="nps-ring"><div><strong>74</strong><span>NPS</span></div></div>
-          <div className="health-stats"><div><strong>428</strong><span>активных учеников</span></div><div><strong>63</strong><span>кейса за месяц</span></div><div><strong>87%</strong><span>доходимость</span></div></div>
-        </article>
-        <article className="panel attention-card">
-          <div className="attention-icon"><Clock3 size={18} /></div><div><span>Требуют внимания</span><strong>12 лидов без ответа</strong><p>Самый долгий — 38 минут</p></div><button onClick={() => onOpen("crm")}><ChevronRight size={17} /></button>
-        </article>
+    <SectionHeading eyebrow="ГЛАВНОЕ ЗА ИЮЛЬ" title="Ключевые показатели" copy="Шесть цифр, по которым видно состояние бизнеса. Подробности — внутри разделов." />
+    <section className="overview-metric-section" aria-labelledby="finance-metrics-title">
+      <div className="overview-group-head"><div><span>01</span><h3 id="finance-metrics-title">Финансы</h3></div><button onClick={() => onOpen("finance")}>Подробнее <ChevronRight size={15} /></button></div>
+      <div className="overview-metric-grid">
+        {financeMetrics.map(metric => <OverviewMetricCard key={metric.label} metric={metric} onClick={() => onOpen("finance")} />)}
       </div>
     </section>
-    <button className="mobile-export" onClick={exportReport}><Download size={16} /> Экспортировать отчёт</button>
+    <section className="overview-metric-section" aria-labelledby="sales-metrics-title">
+      <div className="overview-group-head"><div><span>02</span><h3 id="sales-metrics-title">Воронка продаж</h3></div><button onClick={() => onOpen("sales")}>Подробнее <ChevronRight size={15} /></button></div>
+      <div className="overview-metric-grid">
+        {salesMetrics.map(metric => <OverviewMetricCard key={metric.label} metric={metric} onClick={() => onOpen("sales")} />)}
+      </div>
+    </section>
   </>;
 }
 
