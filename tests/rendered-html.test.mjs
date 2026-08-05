@@ -15,7 +15,8 @@ test("server-renders the LUMO dashboard", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /LUMO/);
-  assert.match(html, /Ключевые показатели/);
+  assert.match(html, /Состояние бизнеса/);
+  assert.match(html, /Воронка конверсий/);
   assert.match(html, /YouTube/);
   assert.match(html, /CRM/);
   assert.doesNotMatch(html, /Your site is taking shape|Building your site|codex-preview/i);

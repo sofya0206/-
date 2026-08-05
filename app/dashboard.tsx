@@ -63,6 +63,10 @@ type Client = {
   manager: string;
   revenue: number;
   responseMinutes: number;
+  subsequentResponseMinutes?: number;
+  services?: string;
+  chatAnalysisStatus?: string;
+  chatSummary?: string;
   tags: string;
   notes?: string;
   nextFollowUp?: string | null;
@@ -182,7 +186,14 @@ export default function Dashboard() {
   useEffect(() => {
     fetch("/api/leads").then(r => r.ok ? r.json() : Promise.reject()).then(data => {
       if (data.clients?.length) {
-        const normalized = data.clients.map((client: Client) => ({ ...client, createdAt: client.createdAt.includes("T") ? "Сегодня" : client.createdAt }));
+        const normalized = data.clients.map((client: Client) => ({
+          ...client,
+          services: !client.services || client.services === "services" ? "" : client.services,
+          subsequentResponseMinutes: typeof client.subsequentResponseMinutes === "number" ? client.subsequentResponseMinutes : 0,
+          chatAnalysisStatus: !client.chatAnalysisStatus || client.chatAnalysisStatus === "chat_analysis_status" ? "not_connected" : client.chatAnalysisStatus,
+          chatSummary: !client.chatSummary || client.chatSummary === "chat_summary" ? "" : client.chatSummary,
+          createdAt: client.createdAt.includes("T") ? "Сегодня" : client.createdAt,
+        }));
         setClients(normalized);
       }
     }).catch(() => undefined);
@@ -316,7 +327,7 @@ export default function Dashboard() {
       </header>
 
       <div className="content">
-        {activeTab === "overview" && <Overview clients={clients} expenses={expenses} onOpen={changeTab} />}
+        {activeTab === "overview" && <Overview clients={clients} expenses={expenses} videoData={videoData} videoSource={videoSource} onOpen={changeTab} />}
         {activeTab === "youtube" && <Youtube clients={clients} expenses={expenses} videoData={videoData} videoSource={videoSource} exportReport={exportReport} />}
         {activeTab === "sales" && <Sales clients={clients} managers={dbManagers} onAddManager={() => setManagerOpen(true)} />}
         {activeTab === "crm" && <CRM clients={filteredClients} allClients={clients} search={search} setSearch={setSearch} filter={stageFilter} setFilter={setStageFilter} openClient={setActiveClient} onNewLead={() => setNewLeadOpen(true)} onImport={() => setImportOpen(true)} onExport={exportClients} />}
@@ -338,35 +349,7 @@ export default function Dashboard() {
   </div>;
 }
 
-type OverviewMetric = {
-  label: string;
-  value: string;
-  change?: string;
-  progress: number;
-  progressLabel: string;
-  progressValue: string;
-  detail: string;
-  icon: LucideIcon;
-  tone: string;
-  featured?: boolean;
-};
-
-function OverviewMetricCard({ metric, onClick }: { metric: OverviewMetric; onClick: () => void }) {
-  const Icon = metric.icon;
-  return <button className={`overview-metric-card ${metric.tone}${metric.featured ? " featured" : ""}`} onClick={onClick}>
-    <span className="overview-metric-top">
-      <span className="overview-metric-label">{metric.label}</span>
-      {metric.change && <span className="overview-metric-change"><ArrowUpRight size={14} />{metric.change}</span>}
-      <span className="overview-metric-icon"><Icon size={19} /></span>
-    </span>
-    <strong>{metric.value}</strong>
-    <span className="overview-metric-detail">{metric.detail}</span>
-    <span className="overview-progress-copy"><span>{metric.progressLabel}</span><b>{metric.progressValue}</b></span>
-    <span className="overview-progress" aria-hidden="true"><i style={{ width: `${Math.min(metric.progress, 100)}%` }} /></span>
-  </button>;
-}
-
-function Overview({ clients, expenses, onOpen }: { clients: Client[]; expenses: Expense[]; onOpen: (tab: Tab) => void }) {
+function Overview({ clients, expenses, videoData, videoSource, onOpen }: { clients: Client[]; expenses: Expense[]; videoData: VideoData[]; videoSource: "demo" | "youtube"; onOpen: (tab: Tab) => void }) {
   const revenue = clients.reduce((sum, client) => sum + client.revenue, 0);
   const expenseTotal = expenses.reduce((sum, expense) => sum + expense.amount, 0);
   const profit = revenue - expenseTotal;
@@ -374,29 +357,40 @@ function Overview({ clients, expenses, onOpen }: { clients: Client[]; expenses: 
   const calls = clients.filter(client => isCallStage(client.stage)).length;
   const sales = clients.filter(client => client.stage === "Оплачено").length;
   const averageCheck = sales ? Math.round(revenue / sales) : 0;
-  const financeMetrics: OverviewMetric[] = [
-    { label: "Выручка", value: formatMoney(revenue), progress: sales ? 100 : 0, progressLabel: "Оплаченных сделок", progressValue: String(sales), detail: "По оплатам в CRM", icon: CircleDollarSign, tone: "green" },
-    { label: "Результат", value: formatMoney(profit), progress: Math.max(0, percent(profit, revenue)), progressLabel: "Маржинальность", progressValue: `${percent(profit, revenue)}%`, detail: "Выручка минус внесённые расходы", icon: TrendingUp, tone: "lime", featured: profit >= 0 },
-    { label: "Расходы", value: formatMoney(expenseTotal), progress: percent(expenseTotal, Math.max(revenue, expenseTotal)), progressLabel: "Доля от оборота", progressValue: `${percent(expenseTotal, revenue)}%`, detail: `${expenses.length} сохранённых операций`, icon: Wallet, tone: "coral" },
+  const fallbackViews = videos.reduce((sum, video) => sum + Number(video.views.replace(/[^\d,]/g, "").replace(",", ".")) * 1000, 0);
+  const youtubeViews = videoData.length ? videoData.reduce((sum, video) => sum + video.views, 0) : fallbackViews;
+  const releasedVideos = videoData.length || videos.length;
+  const financeMetrics = [
+    { label: "Чистая прибыль", value: formatMoney(profit), hint: `${percent(profit, revenue)}% маржинальность`, icon: TrendingUp },
+    { label: "Доходы", value: formatMoney(revenue), hint: `${sales} оплаченных сделок`, icon: CircleDollarSign },
+    { label: "Расходы", value: formatMoney(expenseTotal), hint: `${expenses.length} операций`, icon: Wallet },
+    { label: "Средний чек", value: formatMoney(averageCheck), hint: "по закрытым сделкам", icon: CreditCard },
   ];
-  const salesMetrics: OverviewMetric[] = [
-    { label: "Заявки", value: String(clients.length), progress: percent(dialogs, clients.length), progressLabel: "Дошли до диалога", progressValue: `${percent(dialogs, clients.length)}%`, detail: "Все заявки в CRM", icon: FileText, tone: "purple" },
-    { label: "Звонки", value: String(calls), progress: percent(calls, dialogs), progressLabel: "Диалог → звонок", progressValue: `${percent(calls, dialogs)}%`, detail: "Заявки на этапе звонка и дальше", icon: Phone, tone: "blue" },
-    { label: "Продажи", value: String(sales), progress: percent(sales, calls), progressLabel: "Звонок → продажа", progressValue: `${percent(sales, calls)}%`, detail: `Средний чек ${formatMoney(averageCheck)}`, icon: Target, tone: "yellow" },
+  const funnel = [
+    { label: "Заявки", value: clients.length, conversion: 100 },
+    { label: "Диалоги", value: dialogs, conversion: percent(dialogs, clients.length) },
+    { label: "Звонки", value: calls, conversion: percent(calls, dialogs) },
+    { label: "Продажи", value: sales, conversion: percent(sales, calls) },
+  ];
+  const socials = [
+    { label: "Подписчики в TG", value: "—", hint: "подключите Telegram API", icon: Send },
+    { label: "Просмотры YouTube", value: formatCompact(youtubeViews), hint: videoSource === "youtube" ? "YouTube Data API" : "демонстрационный снимок", icon: Video },
+    { label: "Роликов за период", value: String(releasedVideos), hint: "опубликовано на канале", icon: Play },
   ];
   return <>
-    <SectionHeading eyebrow="ГЛАВНОЕ ЗА ИЮЛЬ" title="Ключевые показатели" />
-    <section className="overview-metric-section" aria-labelledby="finance-metrics-title">
-      <div className="overview-group-head"><div><span>01</span><h3 id="finance-metrics-title">Финансы</h3></div><button onClick={() => onOpen("finance")}>Подробнее <ChevronRight size={15} /></button></div>
-      <div className="overview-metric-grid">
-        {financeMetrics.map(metric => <OverviewMetricCard key={metric.label} metric={metric} onClick={() => onOpen("finance")} />)}
-      </div>
+    <SectionHeading eyebrow="BUSINESS PULSE" title="Состояние бизнеса" />
+    <section className="dashboard-finance-strip" aria-label="Финансовые показатели">
+      {financeMetrics.map(({ label, value, hint, icon: Icon }, index) => <button key={label} className={`dashboard-finance-card ${index === 0 ? `featured ${profit < 0 ? "negative" : ""}` : ""}`} onClick={() => onOpen("finance")}><span><Icon size={18}/>{label}</span><strong>{value}</strong><small>{hint}</small></button>)}
     </section>
-    <section className="overview-metric-section" aria-labelledby="sales-metrics-title">
-      <div className="overview-group-head"><div><span>02</span><h3 id="sales-metrics-title">Воронка продаж</h3></div><button onClick={() => onOpen("sales")}>Подробнее <ChevronRight size={15} /></button></div>
-      <div className="overview-metric-grid">
-        {salesMetrics.map(metric => <OverviewMetricCard key={metric.label} metric={metric} onClick={() => onOpen("sales")} />)}
-      </div>
+    <section className="dashboard-core-grid">
+      <article className="glass-panel dashboard-funnel-card">
+        <div className="compact-panel-head"><div><span className="panel-kicker">ОТДЕЛ ПРОДАЖ</span><h3>Воронка конверсий</h3></div><button onClick={() => onOpen("sales")}>Подробнее <ChevronRight size={15}/></button></div>
+        <div className="dashboard-funnel-flow">{funnel.map((item, index) => <div key={item.label} className={index === funnel.length - 1 ? "success" : ""}><span>{item.label}</span><strong>{item.value}</strong><small>{index === 0 ? "100%" : `${item.conversion}% с прошлого этапа`}</small>{index < funnel.length - 1 && <ChevronRight size={17}/>}</div>)}</div>
+      </article>
+      <article className="glass-panel dashboard-social-card">
+        <div className="compact-panel-head"><div><span className="panel-kicker">СОЦСЕТИ</span><h3>Охваты за период</h3></div><button onClick={() => onOpen("youtube")}>YouTube <ChevronRight size={15}/></button></div>
+        <div className="dashboard-social-grid">{socials.map(({ label, value, hint, icon: Icon }) => <div key={label}><span><Icon size={17}/>{label}</span><strong>{value}</strong><small>{hint}</small></div>)}</div>
+      </article>
     </section>
   </>;
 }
@@ -410,22 +404,26 @@ function Youtube({ clients, expenses, videoData, videoSource, exportReport }: { 
     const linkedSpend = expenses.filter(expense => expense.videoId === video.title || expense.videoId === video.youtubeId).reduce((sum, expense) => sum + expense.amount, 0);
     return { ...video, leads: useCrm ? attributed.length : video.leads, dialogs: useCrm ? attributed.filter(client => isDialogStage(client.stage)).length : video.dialogs, calls: useCrm ? attributed.filter(client => isCallStage(client.stage)).length : video.calls, sales: useCrm ? attributed.filter(client => client.stage === "Оплачено").length : video.sales, revenue: useCrm ? attributed.reduce((sum, client) => sum + client.revenue, 0) : video.revenue, spend: linkedSpend || video.spend, accent: ["blue", "lime", "purple", "orange", "pink"][index % 5] };
   });
-  const totals = videoCards.reduce((sum, video) => ({ views: sum.views + video.views, leads: sum.leads + video.leads, dialogs: sum.dialogs + video.dialogs, calls: sum.calls + video.calls, sales: sum.sales + video.sales, spend: sum.spend + video.spend }), { views: 0, leads: 0, dialogs: 0, calls: 0, sales: 0, spend: 0 });
+  const totals = videoCards.reduce((sum, video) => ({ views: sum.views + video.views, leads: sum.leads + video.leads, dialogs: sum.dialogs + video.dialogs, calls: sum.calls + video.calls, sales: sum.sales + video.sales, revenue: sum.revenue + video.revenue, spend: sum.spend + video.spend }), { views: 0, leads: 0, dialogs: 0, calls: 0, sales: 0, revenue: 0, spend: 0 });
   const monthlyMetrics = [
-    { label: "Просмотры за месяц", value: formatCompact(totals.views), detail: videoSource === "youtube" ? "Из YouTube Data API" : "Демонстрационный снимок", icon: Video, tone: "purple" },
-    { label: "Заявки с YouTube", value: formatCompact(totals.leads), detail: `${percent(totals.leads, totals.views)}% от просмотров`, icon: FileText, tone: "green" },
-    { label: "Новые подписчики", value: "—", detail: "Нужен YouTube Analytics OAuth", icon: UsersRound, tone: "blue" },
-    { label: "Входы во фронт", value: formatCompact(totals.dialogs), detail: `${percent(totals.dialogs, totals.leads)}% от заявок`, icon: Target, tone: "orange" },
-    { label: "Выпущено роликов", value: String(videoCards.length), detail: "За выбранный месяц", icon: Play, tone: "lime" },
+    { label: "Просмотры за месяц", value: formatCompact(totals.views), detail: videoSource === "youtube" ? "YouTube Data API" : "Демонстрационный снимок", icon: Video, tone: "blue-1" },
+    { label: "Роликов за месяц", value: String(videoCards.length), detail: "опубликовано на канале", icon: Play, tone: "blue-2" },
+    { label: "Заявки", value: formatCompact(totals.leads), detail: `${percent(totals.leads, totals.views)}% от просмотров`, icon: FileText, tone: "blue-3" },
+    { label: "Новые подписчики", value: "—", detail: "нужен Analytics OAuth", icon: UsersRound, tone: "blue-4" },
+    { label: "Входы в воронку", value: formatCompact(totals.dialogs), detail: `${percent(totals.dialogs, totals.leads)}% от заявок`, icon: Target, tone: "blue-5" },
   ];
+  const productionSpend = videoSource === "demo" ? 654000 : expenses.filter(item => item.category === "Продакшн").reduce((sum, item) => sum + item.amount, 0);
+  const teamSpend = videoSource === "demo" ? 412000 : expenses.filter(item => item.category === "Команда" && item.videoId).reduce((sum, item) => sum + item.amount, 0);
+  const designSpend = videoSource === "demo" ? 278000 : expenses.filter(item => item.category === "Дизайн").reduce((sum, item) => sum + item.amount, 0);
+  const contentSpend = productionSpend + teamSpend + designSpend;
   const contentExpenses = [
-    { label: "Продакшн", value: videoSource === "demo" ? 654000 : expenses.filter(item => item.category === "Продакшн").reduce((sum, item) => sum + item.amount, 0), tone: "purple" },
-    { label: "Команда", value: videoSource === "demo" ? 412000 : expenses.filter(item => item.category === "Команда" && item.videoId).reduce((sum, item) => sum + item.amount, 0), tone: "blue" },
-    { label: "Дизайн", value: videoSource === "demo" ? 278000 : expenses.filter(item => item.category === "Дизайн").reduce((sum, item) => sum + item.amount, 0), tone: "green" },
-    { label: "Другое", value: videoSource === "demo" ? 186000 : expenses.filter(item => item.category === "YouTube").reduce((sum, item) => sum + item.amount, 0), tone: "gray" },
+    { label: "Продакшн", value: formatMoney(productionSpend), detail: `${percent(productionSpend, contentSpend)}% бюджета`, icon: Video },
+    { label: "Команда", value: formatMoney(teamSpend), detail: `${percent(teamSpend, contentSpend)}% бюджета`, icon: UsersRound },
+    { label: "Дизайн", value: formatMoney(designSpend), detail: `${percent(designSpend, contentSpend)}% бюджета`, icon: Sparkles },
+    { label: "ROI месяца", value: contentSpend ? `x${(totals.revenue / contentSpend).toFixed(1).replace(".", ",")}` : "—", detail: `${formatMoney(contentSpend)} вложено`, icon: TrendingUp },
   ];
   return <>
-    <SectionHeading eyebrow="ИТОГИ ЗА МЕСЯЦ" title="YouTube в цифрах" action={<div className="heading-actions"><span className={`data-source-chip ${videoSource}`}>{videoSource === "youtube" ? "YouTube подключён" : "Демо-данные"}</span><button className="secondary-button" onClick={exportReport}><Download size={16} /> Выгрузить отчёт</button></div>} />
+    <SectionHeading eyebrow="ИТОГИ ЗА МЕСЯЦ" title="YouTube-аналитика" action={<div className="heading-actions"><span className={`data-source-chip ${videoSource}`}>{videoSource === "youtube" ? "Данные обновляются" : "Демо-снимок"}</span><button className="secondary-button" onClick={exportReport}><Download size={16} /> Выгрузить отчёт</button></div>} />
     <section className="youtube-kpi-grid" aria-label="Ключевые показатели YouTube">
       {monthlyMetrics.map(metric => {
         const Icon = metric.icon;
@@ -438,14 +436,14 @@ function Youtube({ clients, expenses, videoData, videoSource, exportReport }: { 
       <div className="youtube-video-grid">
         {videoCards.map((video, index) => <article className="youtube-video-card" key={video.youtubeId}>
           <div className={`youtube-video-cover ${video.accent}`}><span>{new Date(video.publishedAt).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}</span><i><Play size={22} fill="currentColor" /></i><small>#{index + 1}</small></div>
-          <div className="youtube-video-body"><h3>{video.title}</h3><div className="youtube-video-stats"><div><span>Просмотры</span><strong>{formatCompact(video.views)}</strong></div><div><span>Заявки</span><strong>{video.leads}</strong></div><div><span>Звонки</span><strong>{video.calls}</strong></div><div><span>Продажи</span><strong>{video.sales}</strong></div></div></div>
+          <div className="youtube-video-body"><h3>{video.title}</h3><div className="youtube-video-meta"><span>UTM · {video.utm}</span><strong>{video.revenue ? formatMoney(video.revenue) : "Без оплат"}</strong></div><div className="youtube-video-funnel"><div><span>Просмотры</span><strong>{formatCompact(video.views)}</strong></div><ChevronRight size={15}/><div><span>Заявки</span><strong>{video.leads}</strong></div><ChevronRight size={15}/><div><span>Звонки</span><strong>{video.calls}</strong></div><ChevronRight size={15}/><div className="paid"><span>Продажи</span><strong>{video.sales}</strong></div></div></div>
         </article>)}
       </div>
     </section>
 
     <section className="youtube-expense-section" aria-labelledby="youtube-expenses-title">
-      <div className="overview-group-head"><div><span>02</span><h3 id="youtube-expenses-title">Расходы на контент</h3></div><small>Всего: <b>{formatMoney(contentExpenses.reduce((sum, item) => sum + item.value, 0))}</b></small></div>
-      <div className="youtube-expense-grid">{contentExpenses.map(expense => <article className={`youtube-expense-card ${expense.tone}`} key={expense.label}><span>{expense.label}</span><strong>{formatMoney(expense.value)}</strong></article>)}</div>
+      <div className="overview-group-head"><div><span>02</span><h3 id="youtube-expenses-title">Расходы и окупаемость</h3></div><small>Контент-бюджет: <b>{formatMoney(contentSpend)}</b></small></div>
+      <div className="youtube-expense-grid">{contentExpenses.map(({ label, value, detail, icon: Icon }, index) => <article className={`youtube-expense-card ${index === 3 ? "roi-card" : ""}`} key={label}><span><Icon size={17}/>{label}</span><strong>{value}</strong><small>{detail}</small></article>)}</div>
     </section>
   </>;
 }
@@ -456,6 +454,8 @@ function Sales({ clients, managers: team, onAddManager }: { clients: Client[]; m
   const sales = clients.filter(client => client.stage === "Оплачено").length;
   const answered = clients.filter(client => client.responseMinutes > 0);
   const averageResponse = answered.length ? Math.round(answered.reduce((sum, client) => sum + client.responseMinutes, 0) / answered.length) : 0;
+  const subsequentAnswered = clients.filter(client => (client.subsequentResponseMinutes || 0) > 0);
+  const averageSubsequentResponse = subsequentAnswered.length ? Math.round(subsequentAnswered.reduce((sum, client) => sum + (client.subsequentResponseMinutes || 0), 0) / subsequentAnswered.length) : 0;
   const withinSla = answered.filter(client => client.responseMinutes <= 7).length;
   const teamRows = team.length ? team.map((manager, index) => {
     const shortName = manager.name.split(" ")[0];
@@ -480,7 +480,7 @@ function Sales({ clients, managers: team, onAddManager }: { clients: Client[]; m
           {[{l:"Заявки",v:clients.length,p:"100%"},{l:"Диалог",v:dialogs,p:`${percent(dialogs, clients.length)}%`},{l:"Звонок",v:calls,p:`${percent(calls, dialogs)}%`},{l:"Оплачено",v:sales,p:`${percent(sales, calls)}%`}].map((item, i, rows) => <div className={i === rows.length - 1 ? "paid" : ""} key={item.l}><span className="stage-number">{String(i + 1).padStart(2,"0")}</span><span>{item.l}</span><strong>{item.v}</strong><em>{item.p}</em></div>)}
         </div>
       </article>
-      <article className="panel response-panel"><div className="panel-head"><div><span className="panel-kicker">СКОРОСТЬ ОТВЕТА</span><h3>По заявкам в CRM</h3></div><span className="goal-chip">Цель &lt; 7 мин</span></div><div className="response-simple-grid"><div className="response-main"><span><Zap size={20} /></span><small>Средний первый ответ</small><strong>{averageResponse ? `${averageResponse} мин` : "—"}</strong><em>{answered.length} заявок с замером</em></div><div><small>В рамках SLA</small><strong>{percent(withinSla, answered.length)}%</strong><em>{withinSla} ответов вовремя</em></div><div><small>Просрочено</small><strong>{percent(answered.length - withinSla, answered.length)}%</strong><em>{answered.length - withinSla} требуют разбора</em></div></div></article>
+      <article className="panel response-panel"><div className="panel-head"><div><span className="panel-kicker">СКОРОСТЬ ОТВЕТА</span><h3>По заявкам в CRM</h3></div><span className="goal-chip">Цель &lt; 7 мин</span></div><div className="response-simple-grid"><div className="response-main"><span><Zap size={20} /></span><small>Средний первый ответ</small><strong>{averageResponse ? `${averageResponse} мин` : "—"}</strong><em>{answered.length} заявок с замером</em></div><div><small>Повторный ответ</small><strong>{averageSubsequentResponse ? `${averageSubsequentResponse} мин` : "—"}</strong><em>{subsequentAnswered.length ? `${subsequentAnswered.length} диалогов с замером` : "появится после подключения чатов"}</em></div><div><small>В рамках SLA</small><strong>{percent(withinSla, answered.length)}%</strong><em>{withinSla} ответов вовремя</em></div></div></article>
     </section>
     <article className="panel manager-panel"><div className="panel-head"><div><span className="panel-kicker">КОМАНДА</span><h3>Результаты менеджеров</h3></div></div><div className="table-scroll"><table className="data-table manager-table"><thead><tr><th>Менеджер</th><th>Заявки</th><th>Звонки</th><th>Продажи</th><th>Конверсия</th><th>Средний ответ</th><th>Выручка</th><th>План</th></tr></thead><tbody>{teamRows.map((m)=><tr key={m.name}><td><div className="manager-name"><span className={`manager-avatar c${m.index % 4}`}>{m.initials}</span><div><strong>{m.name}</strong><small>{team.length ? "Добавлен в команду" : "Демо-профиль"}</small></div></div></td><td>{m.leads}</td><td>{m.calls}</td><td><strong>{m.sales}</strong></td><td><span className="conversion">{m.cr}</span></td><td>{m.response}</td><td><strong>{m.revenue}</strong></td><td><div className="plan-cell"><span><i style={{width:`${Math.min(m.plan,100)}%`}} /></span><b>{m.plan}%</b></div></td></tr>)}</tbody></table></div></article>
   </>;
@@ -495,14 +495,18 @@ function CRM({ clients, allClients, search, setSearch, filter, setFilter, openCl
     { label: "Оплачено", value: allClients.filter(client => client.stage === "Оплачено").length, filter: "Оплачено", color: "green" },
     { label: "Не целевые", value: allClients.filter(client => client.stage === "Не целевой").length, filter: "Не целевой", color: "gray" },
   ];
-  const summarize = (field: "ageGroup" | "incomeBand") => Object.entries(allClients.reduce<Record<string, number>>((acc, client) => { const key = client[field] || "Не указан"; acc[key] = (acc[key] || 0) + 1; return acc; }, {})).sort((a, b) => b[1] - a[1]);
+  const under18 = allClients.filter(client => client.ageGroup.toLowerCase().includes("до 18")).length;
+  const adults = allClients.filter(client => client.ageGroup && client.ageGroup !== "Не указан" && !client.ageGroup.toLowerCase().includes("до 18")).length;
+  const incomeMidpoint = (band: string): number => band.includes("250+") ? 300000 : band.includes("150–250") ? 200000 : band.includes("80–150") ? 115000 : band.includes("до 80") ? 40000 : 0;
+  const incomeRows = allClients.map(client => incomeMidpoint(client.incomeBand)).filter(Boolean);
+  const averageIncome = incomeRows.length ? Math.round(incomeRows.reduce((sum, value) => sum + value, 0) / incomeRows.length) : 0;
   return <>
     <SectionHeading eyebrow="ЕДИНАЯ БАЗА" title="CRM — все заявки" action={<div className="heading-actions"><button className="secondary-button" onClick={onImport}><Upload size={16} /> Импорт CSV</button><button className="primary-button" onClick={onNewLead}><Plus size={16} /> Новая заявка</button></div>} />
     <section className="crm-pipeline">{stages.map(stage=><button key={stage.label} onClick={() => setFilter(stage.filter)}><i className={stage.color} /><span>{stage.label}</span><strong>{stage.value}</strong><ChevronRight size={15} /></button>)}</section>
-    <section className="crm-segments" aria-label="Аналитика заявок"><article><span>Возраст заявок</span><div>{summarize("ageGroup").map(([label, value]) => <p key={label}><b>{label}</b><strong>{value}</strong><small>{percent(value, allClients.length)}%</small></p>)}</div></article><article><span>Доход заявок</span><div>{summarize("incomeBand").map(([label, value]) => <p key={label}><b>{label}</b><strong>{value}</strong><small>{percent(value, allClients.length)}%</small></p>)}</div></article></section>
-    <article className="panel crm-table-panel">
+    <section className="crm-demography" aria-label="Демография заявок"><article><span>До 18 лет</span><strong>{under18}</strong><small>{percent(under18, allClients.length)}% заявок</small></article><article><span>Старше 18</span><strong>{adults}</strong><small>{percent(adults, allClients.length)}% заявок</small></article><article className="wide"><span>Средний заявленный доход</span><strong>{averageIncome ? formatMoney(averageIncome) : "—"}</strong><small>оценка по диапазонам анкеты</small></article></section>
+    <article className="panel crm-list-panel">
       <div className="crm-toolbar"><label className="search-box"><Search size={17} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Найти клиента, контакт или UTM..." /></label><div><label className="filter-select"><Filter size={15} /><select value={filter} onChange={e => setFilter(e.target.value)}><option>Все статусы</option><option>Новая</option><option>Диалог</option><option>Звонок</option><option>Думает</option><option>Оплачено</option><option>Не целевой</option></select><ChevronDown size={13} /></label><button className="secondary-button" onClick={onExport}><Download size={15} /> Экспорт</button></div></div>
-      <div className="table-scroll"><table className="data-table crm-table"><thead><tr><th>Клиент</th><th>Статус</th><th>Источник / UTM</th><th>Доход</th><th>Менеджер</th><th>Последняя активность</th><th /></tr></thead><tbody>{clients.map((client,i)=><tr key={client.id} onClick={() => openClient(client)}><td><div className="manager-name"><span className={`client-avatar c${i%4}`}>{client.name.split(" ").map(n=>n[0]).join("")}</span><div><strong>{client.name}</strong><small>{client.contact} · {client.ageGroup}</small></div></div></td><td><Status value={client.stage} /></td><td><div className="source-cell"><strong><Play size={12} fill="currentColor" /> {client.source}</strong><small>{client.utm}</small></div></td><td><span>{client.incomeBand}</span></td><td>{client.manager}</td><td><div className="activity-cell"><strong>{client.lastActivity}</strong><small>{client.responseMinutes ? `Первый ответ: ${client.responseMinutes} мин` : "Ждёт ответа"}</small></div></td><td><button className="row-arrow"><ChevronRight size={17} /></button></td></tr>)}</tbody></table>{clients.length === 0 && <div className="empty-state"><Search size={22} /><strong>Ничего не найдено</strong><p>Попробуйте изменить запрос или фильтр.</p></div>}</div>
+      <div className="crm-lead-grid">{clients.map((client,i)=><button className="crm-lead-card" key={client.id} onClick={() => openClient(client)}><header><span className={`client-avatar c${i%4}`}>{client.name.split(" ").map(n=>n[0]).join("")}</span><div><strong>{client.name}</strong><small>{client.contact}</small></div><Status value={client.stage}/></header><div className="crm-lead-facts"><span><small>Возраст / доход</small><b>{client.ageGroup} · {client.incomeBand}</b></span><span><small>Ответственный</small><b>{client.manager}</b></span><span><small>Услуга</small><b>{client.services || "Основная программа"}</b></span></div><footer><span><Play size={12} fill="currentColor"/>{client.utm}</span><span><Clock3 size={12}/>{client.responseMinutes ? `${client.responseMinutes} мин до ответа` : "ждёт ответа"}</span><ChevronRight size={16}/></footer></button>)}{clients.length === 0 && <div className="empty-state"><Search size={22} /><strong>Ничего не найдено</strong><p>Попробуйте изменить запрос или фильтр.</p></div>}</div>
     </article>
   </>;
 }
@@ -565,15 +569,18 @@ function Automations({ reportEnabled, setReportEnabled, nudgeEnabled, setNudgeEn
 function ClientDrawer({ client, close, updateClient, openReminder, deleteClient, setToast }: { client: Client; close: () => void; updateClient: (id:number, patch:Partial<Client>)=>void; openReminder:()=>void; deleteClient: (id: number) => void; setToast: (value: string) => void }) {
   const [notes, setNotes] = useState(client.notes || "");
   const [revenue, setRevenue] = useState(client.revenue || 0);
+  const [services, setServices] = useState(client.services || "Основная программа");
   const openTelegram = () => window.open(`https://t.me/${client.contact.replace("@","")}`, "_blank", "noopener,noreferrer");
   return <><button className="drawer-backdrop" onClick={close} aria-label="Закрыть карточку"/><aside className="client-drawer">
     <header><div><span className="client-big-avatar">{client.name.split(" ").map(n=>n[0]).join("")}</span><div><h2>{client.name}</h2><a href={`https://t.me/${client.contact.replace("@","")}`}>{client.contact}<ExternalLink size={12}/></a></div></div><button onClick={close}><X size={20}/></button></header>
     <div className="drawer-actions"><button className="primary-button" onClick={openTelegram}><MessageCircle size={16}/> Написать</button><button className="secondary-button" onClick={() => { updateClient(client.id, { stage: "Звонок", callOutcome: "Назначен" }); setToast("Звонок отмечен в карточке"); }}><Phone size={16}/> Звонок</button><button className="secondary-button" onClick={openReminder}><Bell size={16}/></button></div>
     <section className="drawer-section"><span className="panel-kicker">ЭТАП СДЕЛКИ</span><label className="drawer-select"><select value={client.stage} onChange={e=>updateClient(client.id,{stage:e.target.value})}><option>Новая</option><option>Диалог</option><option>Звонок</option><option>Думает</option><option>Оплачено</option><option>Не целевой</option></select><ChevronDown size={15}/></label><div className="stage-track"><i/><i/><i className={client.stage!=="Новая"?"done":""}/><i className={["Звонок","Думает","Оплачено"].includes(client.stage)?"done":""}/><i className={client.stage==="Оплачено"?"done":""}/></div></section>
     <section className="drawer-section"><span className="panel-kicker">ОТВЕТСТВЕННЫЙ</span><div className="responsible"><span className="manager-avatar c0">МС</span><label><select value={client.manager} onChange={e=>updateClient(client.id,{manager:e.target.value})}><option>Не назначен</option><option>Мария</option><option>Алексей</option><option>Денис</option><option>Ольга</option></select><ChevronDown size={14}/></label><small>{client.manager === "Не назначен" ? "Назначьте менеджера" : "В сети"}</small></div></section>
-    <section className="drawer-section"><span className="panel-kicker">АНКЕТА КЛИЕНТА</span><div className="details-grid"><div><span>Возраст</span><strong>{client.ageGroup}</strong></div><div><span>Доход</span><strong>{client.incomeBand}</strong></div><div><span>Источник</span><strong>{client.source}</strong></div><div><span>Первый ответ</span><strong>{client.responseMinutes ? `${client.responseMinutes} мин` : "—"}</strong></div></div></section>
+    <section className="drawer-section"><span className="panel-kicker">АНКЕТА КЛИЕНТА</span><div className="details-grid"><div><span>Возраст</span><strong>{client.ageGroup}</strong></div><div><span>Доход</span><strong>{client.incomeBand}</strong></div><div><span>Источник</span><strong>{client.source}</strong></div><div><span>Первый ответ</span><strong>{client.responseMinutes ? `${client.responseMinutes} мин` : "—"}</strong></div><div><span>Повторный ответ</span><strong>{client.subsequentResponseMinutes ? `${client.subsequentResponseMinutes} мин` : "—"}</strong></div><div><span>Выручка клиента</span><strong>{formatMoney(client.revenue)}</strong></div></div></section>
+    <section className="drawer-section"><div className="drawer-section-head"><span className="panel-kicker">УСЛУГИ / ПРОДУКТЫ</span><button onClick={() => updateClient(client.id, { services })}>Сохранить</button></div><input className="drawer-text-input" value={services} onChange={event => setServices(event.target.value)} placeholder="Основная программа, сопровождение..."/><small className="drawer-help">Можно указать несколько позиций через запятую.</small></section>
     <section className="drawer-section"><span className="panel-kicker">ОПЛАТА И ВЫРУЧКА</span><div className="payment-editor"><label><span>Сумма сделки</span><input type="number" min="0" value={revenue} onChange={e => setRevenue(Number(e.target.value))} /></label><button className="secondary-button" onClick={() => updateClient(client.id, { revenue })}><Save size={14}/> Сохранить</button><button className="primary-button" onClick={() => updateClient(client.id, { revenue, stage: "Оплачено" })}><CreditCard size={14}/> Оплачено</button></div></section>
     <section className="drawer-section"><span className="panel-kicker">АТРИБУЦИЯ</span><div className="source-card"><span className="video-thumb blue"><Play size={14} fill="currentColor"/></span><div><strong>{client.video}</strong><small>utm_campaign: {client.utm}</small></div><ChevronRight size={16}/></div></section>
+    <section className="drawer-section"><div className="drawer-section-head"><span className="panel-kicker">AI-АНАЛИЗ ДИАЛОГА</span><span className={`ai-state ${client.chatAnalysisStatus === "ready" ? "ready" : ""}`}><i/>{client.chatAnalysisStatus === "ready" ? "Готов" : "Ожидает интеграции"}</span></div><div className="ai-chat-card"><Sparkles size={18}/><div><strong>{client.chatAnalysisStatus === "ready" ? "Резюме диалога" : "Инфраструктура подготовлена"}</strong><p>{client.chatSummary || "После подключения Telegram/CRM и LLM здесь появятся краткое резюме, возражения, эмоциональный тон и следующий лучший шаг для менеджера."}</p></div></div></section>
     <section className="drawer-section"><div className="drawer-section-head"><span className="panel-kicker">ЗАМЕТКИ МЕНЕДЖЕРА</span><button onClick={() => updateClient(client.id, { notes })}>Сохранить</button></div><textarea className="client-notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Контекст диалога, возражения, договорённости..." rows={4}/></section>
     <section className="drawer-section"><div className="drawer-section-head"><span className="panel-kicker">ИСТОРИЯ</span><button onClick={openReminder}>Добавить задачу</button></div><div className="timeline">{client.nextFollowUp && <div><i className="green"/><span>{new Date(client.nextFollowUp).toLocaleString("ru-RU")}</span><strong>Запланирован дожим</strong><p>Менеджер: {client.manager}</p></div>}{client.saleAt && <div><i className="green"/><span>{new Date(client.saleAt).toLocaleString("ru-RU")}</span><strong>Сделка оплачена</strong><p>{formatMoney(client.revenue)}</p></div>}{client.callAt && <div><i className="blue"/><span>{new Date(client.callAt).toLocaleString("ru-RU")}</span><strong>Заявка перешла на звонок</strong><p>{client.callOutcome || "Результат не указан"}</p></div>}{client.responseMinutes > 0 && <div><i className="blue"/><span>Первый контакт</span><strong>Менеджер ответил</strong><p>Время ответа: {client.responseMinutes} мин</p></div>}<div><i/><span>{client.createdAt}</span><strong>Заявка создана из {client.source}</strong><p>utm_campaign: {client.utm}</p></div></div></section>
     <button className="reminder-wide" onClick={openReminder}><Bell size={16}/> Поставить напоминание о дожиме</button>
@@ -594,7 +601,7 @@ function ModalShell({ icon: Icon, kicker, title, copy, close, children, wide = f
 }
 
 function NewLeadModal({ close, done, managers }: { close: () => void; done: (rows: Client[]) => void; managers: DbManager[] }) {
-  const [form, setForm] = useState({ name: "", contact: "", ageGroup: "25–34", incomeBand: "150–250 тыс. ₽", source: "YouTube", video: videos[0].title, utm: "", manager: "Не назначен", notes: "" });
+  const [form, setForm] = useState({ name: "", contact: "", ageGroup: "25–34", incomeBand: "150–250 тыс. ₽", source: "YouTube", video: videos[0].title, utm: "", manager: "Не назначен", services: "Основная программа", notes: "" });
   const [error, setError] = useState("");
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setError("");
@@ -611,6 +618,7 @@ function NewLeadModal({ close, done, managers }: { close: () => void; done: (row
     <label className="span-2">Ролик-источник<select value={form.video} onChange={e=>setForm({...form,video:e.target.value})}>{videos.map(video=><option key={video.title}>{video.title}</option>)}<option>Без атрибуции</option></select></label>
     <label>UTM campaign<input value={form.utm} onChange={e=>setForm({...form,utm:e.target.value})} placeholder="yt_income_300"/></label>
     <label>Менеджер<select value={form.manager} onChange={e=>setForm({...form,manager:e.target.value})}><option>Не назначен</option>{managers.map(manager=><option key={manager.id}>{manager.name.split(" ")[0]}</option>)}</select></label>
+    <label className="span-2">Услуга / продукт<input value={form.services} onChange={e=>setForm({...form,services:e.target.value})} placeholder="Основная программа"/></label>
     <label className="span-2">Комментарий<textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} rows={3} placeholder="Что важно знать менеджеру"/></label>
     {error && <p className="form-error span-2">{error}</p>}
     <div className="form-actions span-2"><button type="button" className="secondary-button" onClick={close}>Отмена</button><button type="submit" className="primary-button"><Save size={15}/> Сохранить заявку</button></div>

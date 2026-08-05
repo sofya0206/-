@@ -46,6 +46,10 @@ export async function POST(request: Request) {
       manager: item.manager?.trim() || "Не назначен",
       revenue: Number(item.revenue) || 0,
       responseMinutes: Number(item.responseMinutes) || 0,
+      subsequentResponseMinutes: Number(item.subsequentResponseMinutes) || 0,
+      services: item.services?.trim() || "Основная программа",
+      chatAnalysisStatus: item.chatAnalysisStatus?.trim() || "not_connected",
+      chatSummary: item.chatSummary?.trim() || "",
       tags: item.tags?.trim() || "новый",
       notes: item.notes?.trim() || "",
       createdAt: item.createdAt || now,
@@ -65,13 +69,17 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const payload = (await request.json()) as { id?: number; stage?: string; manager?: string; revenue?: number; notes?: string; nextFollowUp?: string | null; callDuration?: number; callOutcome?: string };
+    const payload = (await request.json()) as { id?: number; stage?: string; manager?: string; revenue?: number; notes?: string; nextFollowUp?: string | null; callDuration?: number; callOutcome?: string; subsequentResponseMinutes?: number; services?: string; chatAnalysisStatus?: string; chatSummary?: string };
     if (!payload.id) return Response.json({ error: "id is required" }, { status: 400 });
     const updates: Partial<typeof clients.$inferInsert> = { lastActivity: "Только что" };
     if (payload.stage) updates.stage = payload.stage;
     if (payload.manager) updates.manager = payload.manager;
     if (typeof payload.revenue === "number") updates.revenue = payload.revenue;
     if (typeof payload.notes === "string") updates.notes = payload.notes;
+    if (typeof payload.subsequentResponseMinutes === "number") updates.subsequentResponseMinutes = payload.subsequentResponseMinutes;
+    if (typeof payload.services === "string") updates.services = payload.services;
+    if (typeof payload.chatAnalysisStatus === "string") updates.chatAnalysisStatus = payload.chatAnalysisStatus;
+    if (typeof payload.chatSummary === "string") updates.chatSummary = payload.chatSummary;
     if (payload.nextFollowUp !== undefined) updates.nextFollowUp = payload.nextFollowUp;
     if (typeof payload.callDuration === "number") updates.callDuration = payload.callDuration;
     if (typeof payload.callOutcome === "string") updates.callOutcome = payload.callOutcome;

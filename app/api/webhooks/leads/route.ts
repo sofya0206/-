@@ -26,7 +26,7 @@ export async function POST(request: Request) {
         manager = selected.name.split(" ")[0];
       }
     }
-    const [client] = await db.insert(clients).values({ name, contact, ageGroup: String(payload.age_group || payload.age || "Не указан"), incomeBand: String(payload.income_band || payload.income || "Не указан"), source: String(payload.source || "Telegram"), video: String(payload.video || payload.video_title || "Без атрибуции"), utm: String(payload.utm || payload.utm_campaign || "telegram"), stage: "Новая", manager: manager || "Не назначен", tags: String(payload.tags || "webhook"), notes: typeof payload.notes === "string" ? payload.notes : "", createdAt: now, lastActivity: "Только что" }).returning();
+    const [client] = await db.insert(clients).values({ name, contact, ageGroup: String(payload.age_group || payload.age || "Не указан"), incomeBand: String(payload.income_band || payload.income || "Не указан"), source: String(payload.source || "Telegram"), video: String(payload.video || payload.video_title || "Без атрибуции"), utm: String(payload.utm || payload.utm_campaign || "telegram"), stage: "Новая", manager: manager || "Не назначен", services: String(payload.services || payload.product || "Основная программа"), tags: String(payload.tags || "webhook"), notes: typeof payload.notes === "string" ? payload.notes : "", createdAt: now, lastActivity: "Только что" }).returning();
     await db.insert(activityEvents).values({ type: "webhook_lead", entityId: client.id, title: "Заявка получена через webhook", detail: `${client.name} · ${client.utm}`, createdAt: now });
     return Response.json({ client }, { status: 201 });
   } catch (error) {
