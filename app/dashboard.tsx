@@ -21,7 +21,6 @@ import {
   ExternalLink,
   FileText,
   Filter,
-  Gauge,
   LayoutDashboard,
   Menu,
   MessageCircle,
@@ -346,29 +345,43 @@ function Overview({ onOpen }: { onOpen: (tab: Tab) => void }) {
   </>;
 }
 
-function VideoTable({ compact = false }: { compact?: boolean }) {
-  return <div className="table-scroll"><table className="data-table video-table"><thead><tr><th>Ролик</th><th>Просмотры</th><th>Заявки</th><th>Звонки</th><th>Продажи</th>{!compact && <th>CR заявки → продажа</th>}<th>Выручка</th><th>ROMI</th></tr></thead><tbody>
-    {videos.slice(0, compact ? 4 : 5).map((video, index) => <tr key={video.title}><td><div className="video-name"><span className={`video-thumb ${video.accent}`}><Play size={14} fill="currentColor" /></span><div><strong>{video.title}</strong><small>{video.date} · #{index + 1}</small></div></div></td><td>{video.views}</td><td><b>{video.leads}</b></td><td>{video.calls}</td><td>{video.sales}</td>{!compact && <td><strong>{video.cr}</strong></td>}<td><strong>{video.revenue}</strong></td><td><span className="roi">{video.roi}</span></td></tr>)}
-  </tbody></table></div>;
-}
-
 function Youtube({ exportReport }: { exportReport: () => void }) {
+  const monthlyMetrics = [
+    { label: "Просмотры за месяц", value: "1,24 млн", detail: "+14,6% к июню", icon: Video, tone: "purple" },
+    { label: "Заявки с YouTube", value: "1 836", detail: "1,48% от просмотров", icon: FileText, tone: "green" },
+    { label: "Новые подписчики", value: "+18 420", detail: "+2,3% к базе канала", icon: UsersRound, tone: "blue" },
+    { label: "Входы во фронт", value: "742", detail: "40,4% от заявок", icon: Target, tone: "orange" },
+    { label: "Выпущено роликов", value: "5", detail: "За выбранный месяц", icon: Play, tone: "lime" },
+  ];
+  const contentExpenses = [
+    { label: "Продакшн", value: "654 тыс. ₽", tone: "purple" },
+    { label: "Команда", value: "412 тыс. ₽", tone: "blue" },
+    { label: "Дизайн", value: "278 тыс. ₽", tone: "green" },
+    { label: "Другое", value: "186 тыс. ₽", tone: "gray" },
+  ];
   return <>
-    <SectionHeading eyebrow="СКВОЗНАЯ АНАЛИТИКА" title="YouTube → воронка → выручка" copy="Каждая заявка связана с роликом и UTM-меткой — видно, какой контент приносит деньги." action={<button className="secondary-button" onClick={exportReport}><Download size={16} /> Выгрузить отчёт</button>} />
-    <section className="metric-grid youtube-metrics">
-      <MetricCard label="Просмотры" value="1,24 млн" change="14,6%" hint="31 ролик" icon={Video} />
-      <MetricCard label="Заявки" value="1 836" change="11,8%" hint="CPL 1 284 ₽" icon={FileText} />
-      <MetricCard label="Выручка с YouTube" value="16,35 млн ₽" change="21,4%" hint="88,8% от общей" icon={CircleDollarSign} />
-      <MetricCard label="ROMI контента" value="x10,7" change="1,8x" hint="затраты 1,53 млн ₽" icon={Gauge} />
+    <SectionHeading eyebrow="ИТОГИ ЗА МЕСЯЦ" title="YouTube в цифрах" copy="Только просмотры, заявки, подписчики, входы во фронт и выпущенные ролики." action={<button className="secondary-button" onClick={exportReport}><Download size={16} /> Выгрузить отчёт</button>} />
+    <section className="youtube-kpi-grid" aria-label="Ключевые показатели YouTube">
+      {monthlyMetrics.map(metric => {
+        const Icon = metric.icon;
+        return <article className={`youtube-kpi-card ${metric.tone}`} key={metric.label}><div><span>{metric.label}</span><i><Icon size={18} /></i></div><strong>{metric.value}</strong><small>{metric.detail}</small></article>;
+      })}
     </section>
-    <section className="youtube-summary-grid">
-      <article className="panel channel-card">
-        <div className="channel-top"><span className="youtube-logo"><Play size={24} fill="white" /></span><div><span>ОСНОВНОЙ КАНАЛ</span><h3>Александр К. — про бизнес</h3><p>824 560 подписчиков</p></div><button><ExternalLink size={17} /></button></div>
-        <div className="channel-stats"><div><strong>31</strong><span>ролик за период</span></div><div><strong>40,1K</strong><span>средние просмотры</span></div><div><strong>5,9%</strong><span>ср. CTR обложек</span></div><div><strong>12:42</strong><span>ср. удержание</span></div></div>
-      </article>
-      <article className="panel content-cost-card"><div className="panel-head"><div><span className="panel-kicker">РАСХОДЫ НА КОНТЕНТ</span><h3>1,53 млн ₽</h3></div><Trend value="3,6%" positive={false} /></div><div className="cost-legend simple-list"><span><i />Продакшн <b>654к</b></span><span><i />Команда <b>412к</b></span><span><i />Дизайн <b>278к</b></span><span><i />Другое <b>186к</b></span></div></article>
+
+    <section className="youtube-video-section" aria-labelledby="published-videos-title">
+      <div className="overview-group-head"><div><span>01</span><h3 id="published-videos-title">Ролики за месяц</h3></div><small>Выпущено: <b>{videos.length}</b></small></div>
+      <div className="youtube-video-grid">
+        {videos.map((video, index) => <article className="youtube-video-card" key={video.title}>
+          <div className={`youtube-video-cover ${video.accent}`}><span>{video.date}</span><i><Play size={22} fill="currentColor" /></i><small>#{index + 1}</small></div>
+          <div className="youtube-video-body"><h3>{video.title}</h3><div className="youtube-video-stats"><div><span>Просмотры</span><strong>{video.views}</strong></div><div><span>Заявки</span><strong>{video.leads}</strong></div><div><span>Звонки</span><strong>{video.calls}</strong></div><div><span>Продажи</span><strong>{video.sales}</strong></div></div></div>
+        </article>)}
+      </div>
     </section>
-    <article className="panel full-table-panel"><div className="panel-head"><div><span className="panel-kicker">ВСЕ РОЛИКИ</span><h3>Контент в цифрах</h3></div><div className="table-actions"><button><Filter size={15} /> Фильтры</button><button><CalendarDays size={15} /> Июль</button></div></div><VideoTable /></article>
+
+    <section className="youtube-expense-section" aria-labelledby="youtube-expenses-title">
+      <div className="overview-group-head"><div><span>02</span><h3 id="youtube-expenses-title">Расходы на контент</h3></div><small>Всего: <b>1,53 млн ₽</b></small></div>
+      <div className="youtube-expense-grid">{contentExpenses.map(expense => <article className={`youtube-expense-card ${expense.tone}`} key={expense.label}><span>{expense.label}</span><strong>{expense.value}</strong></article>)}</div>
+    </section>
   </>;
 }
 
