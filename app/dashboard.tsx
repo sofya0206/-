@@ -329,7 +329,7 @@ function Overview({ onOpen }: { onOpen: (tab: Tab) => void }) {
     { label: "Продажи", value: "137", change: "+15,1%", progress: 28.2, progressLabel: "Звонок → продажа", progressValue: "28,2%", detail: "Средний чек 134 450 ₽", icon: Target, tone: "yellow" },
   ];
   return <>
-    <SectionHeading eyebrow="ГЛАВНОЕ ЗА ИЮЛЬ" title="Ключевые показатели" copy="Шесть цифр, по которым видно состояние бизнеса. Подробности — внутри разделов." />
+    <SectionHeading eyebrow="ГЛАВНОЕ ЗА ИЮЛЬ" title="Ключевые показатели" />
     <section className="overview-metric-section" aria-labelledby="finance-metrics-title">
       <div className="overview-group-head"><div><span>01</span><h3 id="finance-metrics-title">Финансы</h3></div><button onClick={() => onOpen("finance")}>Подробнее <ChevronRight size={15} /></button></div>
       <div className="overview-metric-grid">
